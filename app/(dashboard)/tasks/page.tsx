@@ -15,6 +15,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,8 +33,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, CheckSquare, Clock, Edit, Trash2, AlertCircle } from "lucide-react"
+import { Plus, CheckSquare, Clock, Edit, Trash2, AlertCircle, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useGoogleCalendar } from "@/hooks/use-google-calendar"
 
 export default function TasksPage() {
   const { user } = useAuth()
@@ -31,6 +43,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [deletingTask, setDeletingTask] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("all")
   const [formData, setFormData] = useState({
     title: "",
@@ -39,6 +52,7 @@ export default function TasksPage() {
     priority: "medium",
   })
   const [error, setError] = useState("")
+  const { syncTaskToCalendar, removeFromCalendar } = useGoogleCalendar()
 
   useEffect(() => {
     if (user) {
@@ -82,12 +96,21 @@ export default function TasksPage() {
         if (error) throw error
       } else {
         // Criar nova tarefa
-        const { error } = await supabase.from("tasks").insert({
-          ...taskData,
-          user_id: user!.id,
-        })
+        const { data: newTask, error } = await supabase
+          .from("tasks")
+          .insert({
+            ...taskData,
+            user_id: user!.id,
+          })
+          .select()
+          .single()
 
         if (error) throw error
+
+        // Sincronizar com Google Calendar se tiver data
+        if (newTask && formData.due_date) {
+          await syncTaskToCalendar(newTask.id, formData.title, formData.description || "", formData.due_date)
+        }
       }
 
       setIsDialogOpen(false)
@@ -117,16 +140,29 @@ export default function TasksPage() {
   }
 
   const deleteTask = async (taskId: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta tarefa?")) return
+    setDeletingTask(taskId)
 
     try {
+      // Buscar a tarefa para obter o ID do evento do Google Calendar
+      const task = tasks.find((t) => t.id === taskId)
+
+      // Remover do Google Calendar se existir
+      if (task?.google_calendar_event_id) {
+        await removeFromCalendar(task.google_calendar_event_id)
+      }
+
+      // Deletar a tarefa
       const { error } = await supabase.from("tasks").delete().eq("id", taskId)
 
       if (error) throw error
 
+      // Atualizar a lista local
       setTasks((prev) => prev.filter((task) => task.id !== taskId))
     } catch (error) {
       console.error("Erro ao excluir tarefa:", error)
+      setError("Erro ao excluir tarefa")
+    } finally {
+      setDeletingTask(null)
     }
   }
 
@@ -362,9 +398,35 @@ export default function TasksPage() {
                             <Button variant="ghost" size="sm" onClick={() => openEditDialog(task)}>
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => deleteTask(task.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" disabled={deletingTask === task.id}>
+                                  {deletingTask === task.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Excluir Tarefa</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Tem certeza que deseja excluir a tarefa "{task.title}"? Esta ação não pode ser
+                                    desfeita.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteTask(task.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    Excluir
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </div>
 

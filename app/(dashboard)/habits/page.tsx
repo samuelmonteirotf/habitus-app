@@ -15,14 +15,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Plus, Target, Edit, Trash2, CheckCircle } from "lucide-react"
+import { Plus, Target, Edit, Trash2, CheckCircle, Calendar, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useGoogleCalendar } from "@/hooks/use-google-calendar"
 
 interface HabitWithStats extends Habit {
   today_completed: boolean
@@ -49,6 +61,7 @@ export default function HabitsPage() {
   const [loading, setLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null)
+  const [deletingHabit, setDeletingHabit] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -57,6 +70,7 @@ export default function HabitsPage() {
     target_count: 1,
   })
   const [error, setError] = useState("")
+  const { syncHabitToCalendar, removeFromCalendar, loading: calendarLoading } = useGoogleCalendar()
 
   useEffect(() => {
     if (user) {
@@ -165,12 +179,21 @@ export default function HabitsPage() {
         if (error) throw error
       } else {
         // Criar novo hábito
-        const { error } = await supabase.from("habits").insert({
-          ...formData,
-          user_id: user!.id,
-        })
+        const { data: newHabit, error } = await supabase
+          .from("habits")
+          .insert({
+            ...formData,
+            user_id: user!.id,
+          })
+          .select()
+          .single()
 
         if (error) throw error
+
+        // Sincronizar com Google Calendar
+        if (newHabit) {
+          await syncHabitToCalendar(newHabit.id, formData.title, formData.description || "")
+        }
       }
 
       setIsDialogOpen(false)
@@ -215,16 +238,34 @@ export default function HabitsPage() {
   }
 
   const deleteHabit = async (habitId: string) => {
-    if (!confirm("Tem certeza que deseja excluir este hábito?")) return
+    setDeletingHabit(habitId)
 
     try {
-      const { error } = await supabase.from("habits").update({ is_active: false }).eq("id", habitId)
+      // Buscar o hábito para obter o ID do evento do Google Calendar
+      const habit = habits.find((h) => h.id === habitId)
 
-      if (error) throw error
+      // Remover do Google Calendar se existir
+      if (habit?.google_calendar_event_id) {
+        await removeFromCalendar(habit.google_calendar_event_id)
+      }
 
-      fetchHabits()
+      // Primeiro, deletar todos os logs relacionados
+      const { error: logsError } = await supabase.from("habit_logs").delete().eq("habit_id", habitId)
+
+      if (logsError) throw logsError
+
+      // Depois, deletar o hábito
+      const { error: habitError } = await supabase.from("habits").delete().eq("id", habitId)
+
+      if (habitError) throw habitError
+
+      // Atualizar a lista local
+      setHabits((prev) => prev.filter((habit) => habit.id !== habitId))
     } catch (error) {
       console.error("Erro ao excluir hábito:", error)
+      setError("Erro ao excluir hábito")
+    } finally {
+      setDeletingHabit(null)
     }
   }
 
@@ -395,9 +436,35 @@ export default function HabitsPage() {
                     <Button variant="ghost" size="sm" onClick={() => openEditDialog(habit)}>
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => deleteHabit(habit.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" disabled={deletingHabit === habit.id}>
+                          {deletingHabit === habit.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir Hábito</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Tem certeza que deseja excluir o hábito "{habit.title}"? Esta ação não pode ser desfeita e
+                            todos os dados relacionados serão perdidos.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteHabit(habit.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Excluir
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </CardHeader>
@@ -410,6 +477,17 @@ export default function HabitsPage() {
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   {habit.today_completed ? "Completado hoje!" : "Marcar como feito"}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => syncHabitToCalendar(habit.id, habit.title, habit.description || "")}
+                  disabled={calendarLoading}
+                  className="w-full"
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {habit.google_calendar_event_id ? "Sincronizado" : "Sincronizar com Calendar"}
                 </Button>
 
                 {/* Estatísticas */}

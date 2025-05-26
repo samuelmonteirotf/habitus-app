@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
+import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,11 +13,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { User, Calendar, Shield, Bell, Trash2, ExternalLink } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { User, Calendar, Shield, Bell, Trash2, ExternalLink, Loader2 } from "lucide-react"
 
 export default function SettingsPage() {
   const { user, profile, updateProfile, signOut } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const [success, setSuccess] = useState("")
   const [error, setError] = useState("")
   const [formData, setFormData] = useState({
@@ -52,8 +65,52 @@ export default function SettingsPage() {
   }
 
   const handleSignOut = async () => {
-    if (confirm("Tem certeza que deseja sair?")) {
+    await signOut()
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true)
+
+    try {
+      if (!user) return
+
+      // 1. Deletar todos os dados do usuário em ordem
+      console.log("🗑️ Iniciando exclusão da conta...")
+
+      // Deletar logs de hábitos
+      await supabase.from("habit_logs").delete().eq("user_id", user.id)
+
+      // Deletar hábitos
+      await supabase.from("habits").delete().eq("user_id", user.id)
+
+      // Deletar tarefas
+      await supabase.from("tasks").delete().eq("user_id", user.id)
+
+      // Deletar rotinas
+      await supabase.from("routines").delete().eq("user_id", user.id)
+
+      // Deletar perfil
+      await supabase.from("profiles").delete().eq("id", user.id)
+
+      console.log("✅ Dados do usuário deletados")
+
+      // 2. Deletar conta do Supabase Auth
+      const { error: authError } = await supabase.auth.admin.deleteUser(user.id)
+
+      if (authError) {
+        console.error("Erro ao deletar usuário:", authError)
+        throw authError
+      }
+
+      console.log("✅ Conta deletada com sucesso")
+
+      // 3. Fazer logout
       await signOut()
+    } catch (error: any) {
+      console.error("❌ Erro ao deletar conta:", error)
+      setError("Erro ao deletar conta. Tente novamente.")
+    } finally {
+      setDeletingAccount(false)
     }
   }
 
@@ -204,10 +261,50 @@ export default function SettingsPage() {
                     <h4 className="font-medium text-red-900">Excluir conta</h4>
                     <p className="text-sm text-red-700">Todos os seus dados serão permanentemente removidos</p>
                   </div>
-                  <Button variant="destructive" disabled>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Excluir conta
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" disabled={deletingAccount}>
+                        {deletingAccount ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Excluindo...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir conta
+                          </>
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir Conta Permanentemente</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta ação é <strong>irreversível</strong>. Todos os seus dados serão permanentemente
+                          removidos, incluindo:
+                          <br />
+                          <br />• Todos os hábitos e seu histórico
+                          <br />• Todas as tarefas e rotinas
+                          <br />• Configurações e preferências
+                          <br />• Integração com Google Calendar
+                          <br />
+                          <br />
+                          Tem certeza que deseja continuar?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDeleteAccount}
+                          className="bg-red-600 hover:bg-red-700"
+                          disabled={deletingAccount}
+                        >
+                          Sim, excluir permanentemente
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
 

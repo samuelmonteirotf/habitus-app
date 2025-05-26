@@ -28,14 +28,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Obter sessão inicial
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      }
-      setLoading(false)
-    })
+    supabase.auth
+      .getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) {
+          console.error("❌ Erro ao obter sessão:", error)
+          setLoading(false)
+          return
+        }
+
+        setSession(session)
+        setUser(session?.user ?? null)
+
+        if (session?.user) {
+          fetchProfile(session.user.id, session)
+        } else {
+          setLoading(false)
+        }
+      })
+      .catch((error) => {
+        console.error("❌ Erro inesperado ao obter sessão:", error)
+        setLoading(false)
+      })
 
     // Escutar mudanças de autenticação
     const {
@@ -45,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null)
 
       if (session?.user) {
-        await fetchProfile(session.user.id)
+        await fetchProfile(session.user.id, session)
       } else {
         setProfile(null)
       }
@@ -55,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, session?: Session) => {
     try {
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
@@ -68,6 +82,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: userData.user.email!,
             full_name: userData.user.user_metadata?.full_name || "",
             avatar_url: userData.user.user_metadata?.avatar_url || "",
+            // Capturar token do Google Calendar se disponível
+            google_calendar_token: session?.provider_token || null,
+            google_refresh_token: session?.provider_refresh_token || null,
           }
 
           const { data: createdProfile, error: createError } = await supabase
@@ -81,10 +98,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } else if (!error) {
-        setProfile(data)
+        // Atualizar tokens se necessário
+        if (session?.provider_token && data.google_calendar_token !== session.provider_token) {
+          const updatedProfile = {
+            ...data,
+            google_calendar_token: session.provider_token,
+            google_refresh_token: session.provider_refresh_token || data.google_refresh_token,
+          }
+
+          await supabase.from("profiles").update(updatedProfile).eq("id", userId)
+          setProfile(updatedProfile)
+        } else {
+          setProfile(data)
+        }
       }
     } catch (error) {
-      console.error("Erro ao buscar perfil:", error)
+      console.error("❌ Erro inesperado ao buscar perfil:", error)
+    } finally {
+      setLoading(false)
     }
   }
 

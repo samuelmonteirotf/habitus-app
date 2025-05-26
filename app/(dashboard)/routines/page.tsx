@@ -15,13 +15,25 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Plus, Calendar, Clock, Edit, Trash2, Play, Pause } from "lucide-react"
+import { Plus, Calendar, Clock, Edit, Trash2, Play, Pause, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useGoogleCalendar } from "@/hooks/use-google-calendar"
 
 const daysOfWeek = [
   { value: 0, label: "Dom", fullLabel: "Domingo" },
@@ -39,6 +51,7 @@ export default function RoutinesPage() {
   const [loading, setLoading] = useState(true)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null)
+  const [deletingRoutine, setDeletingRoutine] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -47,6 +60,7 @@ export default function RoutinesPage() {
     days_of_week: [] as number[],
   })
   const [error, setError] = useState("")
+  const { syncRoutineToCalendar, removeFromCalendar } = useGoogleCalendar()
 
   useEffect(() => {
     if (user) {
@@ -90,12 +104,28 @@ export default function RoutinesPage() {
         if (error) throw error
       } else {
         // Criar nova rotina
-        const { error } = await supabase.from("routines").insert({
-          ...formData,
-          user_id: user!.id,
-        })
+        const { data: newRoutine, error } = await supabase
+          .from("routines")
+          .insert({
+            ...formData,
+            user_id: user!.id,
+          })
+          .select()
+          .single()
 
         if (error) throw error
+
+        // Sincronizar com Google Calendar se tiver horários
+        if (newRoutine && formData.start_time && formData.end_time) {
+          await syncRoutineToCalendar(
+            newRoutine.id,
+            formData.title,
+            formData.description || "",
+            formData.start_time,
+            formData.end_time,
+            formData.days_of_week,
+          )
+        }
       }
 
       setIsDialogOpen(false)
@@ -128,16 +158,29 @@ export default function RoutinesPage() {
   }
 
   const deleteRoutine = async (routineId: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta rotina?")) return
+    setDeletingRoutine(routineId)
 
     try {
+      // Buscar a rotina para obter o ID do evento do Google Calendar
+      const routine = routines.find((r) => r.id === routineId)
+
+      // Remover do Google Calendar se existir
+      if (routine?.google_calendar_event_id) {
+        await removeFromCalendar(routine.google_calendar_event_id)
+      }
+
+      // Deletar a rotina
       const { error } = await supabase.from("routines").delete().eq("id", routineId)
 
       if (error) throw error
 
+      // Atualizar a lista local
       setRoutines((prev) => prev.filter((routine) => routine.id !== routineId))
     } catch (error) {
       console.error("Erro ao excluir rotina:", error)
+      setError("Erro ao excluir rotina")
+    } finally {
+      setDeletingRoutine(null)
     }
   }
 
@@ -325,9 +368,34 @@ export default function RoutinesPage() {
                     <Button variant="ghost" size="sm" onClick={() => openEditDialog(routine)}>
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => deleteRoutine(routine.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" disabled={deletingRoutine === routine.id}>
+                          {deletingRoutine === routine.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir Rotina</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Tem certeza que deseja excluir a rotina "{routine.title}"? Esta ação não pode ser desfeita.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteRoutine(routine.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Excluir
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </CardHeader>

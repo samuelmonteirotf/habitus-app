@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   verification: {
     google: "FSD1yiRtLxBDuhMzmVn21qe1P1Uqy9x7qU1e4O9_sDw",
   },
+    generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -30,4 +31,3 @@ export default function RootLayout({
     </html>
   )
 }
-
