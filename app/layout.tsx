@@ -9,7 +9,9 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Hábitus - Produtividade Inteligente",
   description: "Transforme sua rotina em uma jornada de produtividade inteligente",
-    generator: 'v0.dev'
+  verification: {
+    google: "FSD1yiRtLxBDuhMzmVn21qe1P1Uqy9x7qU1e4O9_sDw",
+  },
 }
 
 export default function RootLayout({
@@ -19,9 +21,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
+      <head>
+        <meta name="google-site-verification" content="FSD1yiRtLxBDuhMzmVn21qe1P1Uqy9x7qU1e4O9_sDw" />
+      </head>
       <body className={inter.className}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   )
 }
+
