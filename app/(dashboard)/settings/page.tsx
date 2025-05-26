@@ -24,7 +24,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { User, Calendar, Shield, Bell, Trash2, ExternalLink, Loader2 } from "lucide-react"
+import { User, Calendar, Shield, Bell, Trash2, ExternalLink, Loader2, TestTube } from "lucide-react"
+import { useGoogleCalendar } from "@/hooks/use-google-calendar"
 
 export default function SettingsPage() {
   const { user, profile, updateProfile, signOut } = useAuth()
@@ -36,6 +37,7 @@ export default function SettingsPage() {
     full_name: "",
     email: "",
   })
+  const { testConnection, loading: calendarLoading } = useGoogleCalendar()
 
   useEffect(() => {
     if (profile) {
@@ -66,6 +68,22 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     await signOut()
+  }
+
+  const handleTestCalendar = async () => {
+    setError("")
+    setSuccess("")
+
+    try {
+      const isWorking = await testConnection()
+      if (isWorking) {
+        setSuccess("✅ Conexão com Google Calendar funcionando! Verifique o console para mais detalhes.")
+      } else {
+        setError("❌ Problema na conexão com Google Calendar. Verifique o console para mais detalhes.")
+      }
+    } catch (error) {
+      setError("❌ Erro ao testar conexão com Google Calendar")
+    }
   }
 
   const handleDeleteAccount = async () => {
@@ -221,11 +239,37 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Botão de teste */}
+              {profile?.google_calendar_token && (
+                <div className="p-4 border rounded-lg bg-blue-50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-blue-900">Testar Conexão</h4>
+                      <p className="text-sm text-blue-700">Verificar se a sincronização está funcionando</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleTestCalendar}
+                      disabled={calendarLoading}
+                      className="border-blue-300 text-blue-700 hover:bg-blue-100"
+                    >
+                      {calendarLoading ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <TestTube className="h-4 w-4 mr-1" />
+                      )}
+                      Testar
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <Alert>
                 <Calendar className="h-4 w-4" />
                 <AlertDescription>
                   A integração com Google Calendar permite sincronizar automaticamente suas rotinas e tarefas com seu
-                  calendário pessoal.
+                  calendário pessoal. Abra o console do navegador (F12) para ver logs detalhados.
                 </AlertDescription>
               </Alert>
             </CardContent>

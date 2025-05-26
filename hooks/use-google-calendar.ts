@@ -25,33 +25,72 @@ export function useGoogleCalendar() {
     }
   }
 
-  const syncHabitToCalendar = async (habitId: string, title: string, description: string) => {
-    if (!user) return null
+  const testConnection = async () => {
+    if (!user) return false
 
-    setLoading(true)
     try {
       const calendarService = new GoogleCalendarService()
       const token = await calendarService.getAccessToken(user.id)
 
       if (!token) {
-        console.error("Token do Google Calendar não encontrado")
+        console.error("❌ Token do Google Calendar não encontrado")
+        return false
+      }
+
+      const isValid = await calendarService.validateToken()
+      console.log("🔍 Token válido:", isValid)
+
+      if (isValid) {
+        const events = await calendarService.listEvents()
+        console.log("📅 Eventos encontrados:", events.length)
+        console.log("📋 Eventos:", events)
+      }
+
+      return isValid
+    } catch (error) {
+      console.error("❌ Erro ao testar conexão:", error)
+      return false
+    }
+  }
+
+  const syncHabitToCalendar = async (habitId: string, title: string, description: string) => {
+    if (!user) return null
+
+    setLoading(true)
+    try {
+      console.log("🎯 Sincronizando hábito:", { habitId, title, description })
+
+      const calendarService = new GoogleCalendarService()
+      const token = await calendarService.getAccessToken(user.id)
+
+      if (!token) {
+        console.error("❌ Token do Google Calendar não encontrado")
         return null
       }
 
+      console.log("✅ Token encontrado, criando evento...")
+
       const event = calendarService.createHabitEvent(title, description)
+      console.log("📅 Evento criado:", event)
+
       const eventId = await calendarService.createEvent(event)
 
       if (eventId) {
         // Salvar o ID do evento no banco
-        await supabase.from("habits").update({ google_calendar_event_id: eventId }).eq("id", habitId)
+        const { error } = await supabase.from("habits").update({ google_calendar_event_id: eventId }).eq("id", habitId)
 
-        console.log("✅ Hábito sincronizado com Google Calendar")
+        if (error) {
+          console.error("❌ Erro ao salvar ID do evento:", error)
+        } else {
+          console.log("✅ Hábito sincronizado com Google Calendar, ID:", eventId)
+        }
+
         return eventId
       }
 
       return null
     } catch (error) {
-      console.error("Erro ao sincronizar hábito:", error)
+      console.error("❌ Erro ao sincronizar hábito:", error)
       return null
     } finally {
       setLoading(false)
@@ -70,28 +109,40 @@ export function useGoogleCalendar() {
 
     setLoading(true)
     try {
+      console.log("📅 Sincronizando rotina:", { routineId, title, startTime, endTime, daysOfWeek })
+
       const calendarService = new GoogleCalendarService()
       const token = await calendarService.getAccessToken(user.id)
 
       if (!token) {
-        console.error("Token do Google Calendar não encontrado")
+        console.error("❌ Token do Google Calendar não encontrado")
         return null
       }
 
       const event = calendarService.createRoutineEvent(title, description, startTime, endTime, daysOfWeek)
+      console.log("📅 Evento de rotina criado:", event)
+
       const eventId = await calendarService.createEvent(event)
 
       if (eventId) {
         // Salvar o ID do evento no banco
-        await supabase.from("routines").update({ google_calendar_event_id: eventId }).eq("id", routineId)
+        const { error } = await supabase
+          .from("routines")
+          .update({ google_calendar_event_id: eventId })
+          .eq("id", routineId)
 
-        console.log("✅ Rotina sincronizada com Google Calendar")
+        if (error) {
+          console.error("❌ Erro ao salvar ID do evento:", error)
+        } else {
+          console.log("✅ Rotina sincronizada com Google Calendar, ID:", eventId)
+        }
+
         return eventId
       }
 
       return null
     } catch (error) {
-      console.error("Erro ao sincronizar rotina:", error)
+      console.error("❌ Erro ao sincronizar rotina:", error)
       return null
     } finally {
       setLoading(false)
@@ -103,28 +154,37 @@ export function useGoogleCalendar() {
 
     setLoading(true)
     try {
+      console.log("✅ Sincronizando tarefa:", { taskId, title, dueDate })
+
       const calendarService = new GoogleCalendarService()
       const token = await calendarService.getAccessToken(user.id)
 
       if (!token) {
-        console.error("Token do Google Calendar não encontrado")
+        console.error("❌ Token do Google Calendar não encontrado")
         return null
       }
 
       const event = calendarService.createTaskEvent(title, description, dueDate)
+      console.log("📅 Evento de tarefa criado:", event)
+
       const eventId = await calendarService.createEvent(event)
 
       if (eventId) {
         // Salvar o ID do evento no banco
-        await supabase.from("tasks").update({ google_calendar_event_id: eventId }).eq("id", taskId)
+        const { error } = await supabase.from("tasks").update({ google_calendar_event_id: eventId }).eq("id", taskId)
 
-        console.log("✅ Tarefa sincronizada com Google Calendar")
+        if (error) {
+          console.error("❌ Erro ao salvar ID do evento:", error)
+        } else {
+          console.log("✅ Tarefa sincronizada com Google Calendar, ID:", eventId)
+        }
+
         return eventId
       }
 
       return null
     } catch (error) {
-      console.error("Erro ao sincronizar tarefa:", error)
+      console.error("❌ Erro ao sincronizar tarefa:", error)
       return null
     } finally {
       setLoading(false)
@@ -136,11 +196,13 @@ export function useGoogleCalendar() {
 
     setLoading(true)
     try {
+      console.log("🗑️ Removendo evento do Google Calendar:", eventId)
+
       const calendarService = new GoogleCalendarService()
       const token = await calendarService.getAccessToken(user.id)
 
       if (!token) {
-        console.error("Token do Google Calendar não encontrado")
+        console.error("❌ Token do Google Calendar não encontrado")
         return false
       }
 
@@ -148,11 +210,13 @@ export function useGoogleCalendar() {
 
       if (success) {
         console.log("✅ Evento removido do Google Calendar")
+      } else {
+        console.error("❌ Falha ao remover evento")
       }
 
       return success
     } catch (error) {
-      console.error("Erro ao remover evento:", error)
+      console.error("❌ Erro ao remover evento:", error)
       return false
     } finally {
       setLoading(false)
@@ -162,6 +226,7 @@ export function useGoogleCalendar() {
   return {
     loading,
     isConnected,
+    testConnection,
     syncHabitToCalendar,
     syncRoutineToCalendar,
     syncTaskToCalendar,

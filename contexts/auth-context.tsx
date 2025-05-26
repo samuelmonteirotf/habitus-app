@@ -37,6 +37,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
+        console.log("🔐 Sessão obtida:", session ? "✅ Logado" : "❌ Não logado")
+        if (session?.provider_token) {
+          console.log("🔑 Token do Google encontrado:", session.provider_token.substring(0, 20) + "...")
+        }
+
         setSession(session)
         setUser(session?.user ?? null)
 
@@ -55,6 +60,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("🔄 Mudança de autenticação:", event)
+
+      if (session?.provider_token) {
+        console.log("🔑 Novo token do Google:", session.provider_token.substring(0, 20) + "...")
+      }
+
       setSession(session)
       setUser(session?.user ?? null)
 
@@ -71,10 +82,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string, session?: Session) => {
     try {
+      console.log("👤 Buscando perfil para:", userId)
+
       const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single()
 
       if (error && error.code === "PGRST116") {
         // Perfil não existe, criar um novo
+        console.log("📝 Criando novo perfil...")
+
         const { data: userData } = await supabase.auth.getUser()
         if (userData.user) {
           const newProfile = {
@@ -87,6 +102,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             google_refresh_token: session?.provider_refresh_token || null,
           }
 
+          console.log("🔑 Salvando tokens:", {
+            hasAccessToken: !!newProfile.google_calendar_token,
+            hasRefreshToken: !!newProfile.google_refresh_token,
+          })
+
           const { data: createdProfile, error: createError } = await supabase
             .from("profiles")
             .insert(newProfile)
@@ -94,21 +114,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .single()
 
           if (!createError) {
+            console.log("✅ Perfil criado com sucesso")
             setProfile(createdProfile)
+          } else {
+            console.error("❌ Erro ao criar perfil:", createError)
           }
         }
       } else if (!error) {
         // Atualizar tokens se necessário
         if (session?.provider_token && data.google_calendar_token !== session.provider_token) {
+          console.log("🔄 Atualizando tokens do Google...")
+
           const updatedProfile = {
             ...data,
             google_calendar_token: session.provider_token,
             google_refresh_token: session.provider_refresh_token || data.google_refresh_token,
           }
 
-          await supabase.from("profiles").update(updatedProfile).eq("id", userId)
-          setProfile(updatedProfile)
+          const { error: updateError } = await supabase.from("profiles").update(updatedProfile).eq("id", userId)
+
+          if (!updateError) {
+            console.log("✅ Tokens atualizados")
+            setProfile(updatedProfile)
+          } else {
+            console.error("❌ Erro ao atualizar tokens:", updateError)
+            setProfile(data)
+          }
         } else {
+          console.log("✅ Perfil carregado")
           setProfile(data)
         }
       }
@@ -141,17 +174,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signInWithGoogle = async () => {
+    console.log("🔐 Iniciando login com Google...")
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         scopes: "https://www.googleapis.com/auth/calendar",
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
       },
     })
+
+    if (error) {
+      console.error("❌ Erro no login Google:", error)
+    } else {
+      console.log("✅ Redirecionando para Google...")
+    }
+
     return { data, error }
   }
 
   const signOut = async () => {
+    console.log("👋 Fazendo logout...")
     await supabase.auth.signOut()
   }
 
