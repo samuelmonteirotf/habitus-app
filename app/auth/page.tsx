@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Calendar, Target, TrendingUp } from "lucide-react"
+import Link from "next/link"
 
 export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -221,6 +222,19 @@ export default function AuthPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+      {/* Footer com links legais */}
+      <div className="mt-8 text-center text-sm text-gray-500">
+        <p>
+          Ao continuar, você concorda com nossos{" "}
+          <Link href="/terms" className="text-blue-600 hover:text-blue-800 underline">
+            Termos de Serviço
+          </Link>{" "}
+          e{" "}
+          <Link href="/privacy" className="text-blue-600 hover:text-blue-800 underline">
+            Política de Privacidade
+          </Link>
+        </p>
       </div>
     </div>
   )
