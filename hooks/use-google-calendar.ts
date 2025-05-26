@@ -37,13 +37,14 @@ export function useGoogleCalendar() {
         return false
       }
 
+      console.log("🔑 Token encontrado:", token.substring(0, 20) + "...")
+
       const isValid = await calendarService.validateToken()
       console.log("🔍 Token válido:", isValid)
 
       if (isValid) {
         const events = await calendarService.listEvents()
         console.log("📅 Eventos encontrados:", events.length)
-        console.log("📋 Eventos:", events)
       }
 
       return isValid
@@ -73,6 +74,7 @@ export function useGoogleCalendar() {
       const event = calendarService.createHabitEvent(title, description)
       console.log("📅 Evento criado:", event)
 
+      // Tentar criar o evento diretamente, sem validação prévia
       const eventId = await calendarService.createEvent(event)
 
       if (eventId) {
@@ -122,6 +124,7 @@ export function useGoogleCalendar() {
       const event = calendarService.createRoutineEvent(title, description, startTime, endTime, daysOfWeek)
       console.log("📅 Evento de rotina criado:", event)
 
+      // Tentar criar o evento diretamente
       const eventId = await calendarService.createEvent(event)
 
       if (eventId) {
@@ -167,6 +170,7 @@ export function useGoogleCalendar() {
       const event = calendarService.createTaskEvent(title, description, dueDate)
       console.log("📅 Evento de tarefa criado:", event)
 
+      // Tentar criar o evento diretamente
       const eventId = await calendarService.createEvent(event)
 
       if (eventId) {

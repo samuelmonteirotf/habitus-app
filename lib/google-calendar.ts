@@ -71,41 +71,51 @@ export class GoogleCalendarService {
     }
   }
 
-  // Verificar se o token ainda é válido
+  // Verificar se o token ainda é válido (versão mais robusta)
   async validateToken(): Promise<boolean> {
-    if (!this.accessToken) return false
+    if (!this.accessToken) {
+      console.error("❌ Token não disponível para validação")
+      return false
+    }
 
     try {
+      console.log("🔍 Validando token do Google Calendar...")
+
       const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary", {
         method: "GET",
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
         },
       })
 
-      return response.ok
+      console.log("🔍 Status da validação:", response.status)
+
+      if (response.ok) {
+        console.log("✅ Token válido!")
+        return true
+      } else {
+        const errorText = await response.text()
+        console.error("❌ Token inválido:", response.status, errorText)
+        return false
+      }
     } catch (error) {
-      console.error("Erro ao validar token:", error)
+      console.error("❌ Erro ao validar token:", error)
       return false
     }
   }
 
-  // Criar evento no Google Calendar
+  // Criar evento no Google Calendar (versão mais robusta)
   async createEvent(event: CalendarEvent): Promise<string | null> {
     if (!this.accessToken) {
-      console.error("Token de acesso não disponível")
-      return null
-    }
-
-    // Validar token antes de usar
-    const isValid = await this.validateToken()
-    if (!isValid) {
-      console.error("Token inválido ou expirado")
+      console.error("❌ Token de acesso não disponível")
       return null
     }
 
     try {
-      console.log("📅 Criando evento no Google Calendar:", event)
+      console.log("📅 Criando evento no Google Calendar...")
+      console.log("🔑 Usando token:", this.accessToken.substring(0, 20) + "...")
+      console.log("📋 Dados do evento:", JSON.stringify(event, null, 2))
 
       const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
         method: "POST",
@@ -116,17 +126,35 @@ export class GoogleCalendarService {
         body: JSON.stringify(event),
       })
 
+      console.log("📅 Status da criação:", response.status)
+
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("❌ Erro ao criar evento:", response.status, errorText)
+        console.error("❌ Erro ao criar evento:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+        })
+
+        // Tentar parsear o erro JSON
+        try {
+          const errorJson = JSON.parse(errorText)
+          console.error("❌ Detalhes do erro:", errorJson)
+        } catch {
+          console.error("❌ Erro não é JSON:", errorText)
+        }
+
         return null
       }
 
       const createdEvent = await response.json()
-      console.log("✅ Evento criado com sucesso:", createdEvent.id)
+      console.log("✅ Evento criado com sucesso!")
+      console.log("📅 ID do evento:", createdEvent.id)
+      console.log("📅 Link do evento:", createdEvent.htmlLink)
+
       return createdEvent.id
     } catch (error) {
-      console.error("❌ Erro ao criar evento no Google Calendar:", error)
+      console.error("❌ Erro inesperado ao criar evento:", error)
       return null
     }
   }
@@ -198,11 +226,11 @@ export class GoogleCalendarService {
       summary: `🎯 ${title}`,
       description: `Hábito: ${description}\n\nCriado pelo Hábitus\nHorário: ${startDateTime.toLocaleString("pt-BR")}`,
       start: {
-        dateTime: this.formatDateToBrazilian(startDateTime),
+        dateTime: startDateTime.toISOString(),
         timeZone: this.timeZone,
       },
       end: {
-        dateTime: this.formatDateToBrazilian(endDateTime),
+        dateTime: endDateTime.toISOString(),
         timeZone: this.timeZone,
       },
       recurrence: ["RRULE:FREQ=DAILY"], // Recorrência diária
@@ -251,11 +279,11 @@ export class GoogleCalendarService {
       summary: `📅 ${title}`,
       description: `Rotina: ${description}\n\nCriado pelo Hábitus\nHorário: ${startTime} - ${endTime}\nDias: ${daysOfWeek.map((d) => ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][d]).join(", ")}`,
       start: {
-        dateTime: this.formatDateToBrazilian(startDateTime),
+        dateTime: startDateTime.toISOString(),
         timeZone: this.timeZone,
       },
       end: {
-        dateTime: this.formatDateToBrazilian(endDateTime),
+        dateTime: endDateTime.toISOString(),
         timeZone: this.timeZone,
       },
       recurrence: [`RRULE:FREQ=WEEKLY;BYDAY=${googleDays}`],
@@ -287,11 +315,11 @@ export class GoogleCalendarService {
       summary: `✅ ${title}`,
       description: `Tarefa: ${description}\n\nCriado pelo Hábitus\nPrazo: ${startDateTime.toLocaleString("pt-BR")}`,
       start: {
-        dateTime: this.formatDateToBrazilian(startDateTime),
+        dateTime: startDateTime.toISOString(),
         timeZone: this.timeZone,
       },
       end: {
-        dateTime: this.formatDateToBrazilian(endDateTime),
+        dateTime: endDateTime.toISOString(),
         timeZone: this.timeZone,
       },
     }
@@ -307,8 +335,10 @@ export class GoogleCalendarService {
     try {
       // Buscar eventos dos próximos 7 dias no timezone brasileiro
       const now = new Date()
-      const timeMin = this.formatDateToBrazilian(now)
-      const timeMax = this.formatDateToBrazilian(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+      const timeMin = now.toISOString()
+      const timeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+
+      console.log("📋 Buscando eventos de", timeMin, "até", timeMax)
 
       const response = await fetch(
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime&timeZone=${this.timeZone}`,
@@ -321,7 +351,8 @@ export class GoogleCalendarService {
       )
 
       if (!response.ok) {
-        console.error("Erro ao listar eventos:", response.status)
+        const errorText = await response.text()
+        console.error("❌ Erro ao listar eventos:", response.status, errorText)
         return []
       }
 
